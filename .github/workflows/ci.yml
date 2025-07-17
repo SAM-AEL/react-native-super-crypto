@@ -166,16 +166,32 @@ jobs:
       - name: Build package
         run: yarn prepare
 
+      - name: Write .npmrc for npm publish
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Debug: Show Yarn and npm versions
+      - name: Show Yarn and npm versions
+        run: |
+          yarn --version
+          npm --version
+
+      # Debug: Show npm registry and whoami
+      - name: Show npm registry and whoami
+        run: |
+          npm config get registry
+          npm whoami || echo "npm whoami failed"
+
+      # Debug: Show .npmrc contents
+      - name: Show .npmrc contents
+        run: cat .npmrc
+
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: yarn npm publish --access public
-
-      - name: Write .npmrc for npm publish
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Remove .npmrc
         run: rm -f .npmrc
