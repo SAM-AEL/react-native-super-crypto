@@ -173,7 +173,7 @@ jobs:
         run: yarn npm publish --access public
 
       - name: Write .npmrc for npm publish
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}" > .npmrc
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
