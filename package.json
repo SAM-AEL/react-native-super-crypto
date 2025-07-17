@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A React Native Turbomodule for Crypto Functions",
   "main": "./lib/module/index.js",
+  "browser": "./lib/web.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
     ".": {
@@ -37,7 +38,7 @@
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare": "bob build",
+    "prepare": "bob build && node scripts/generate-web-error.js",
     "release": "release-it --only-version"
   },
   "keywords": [

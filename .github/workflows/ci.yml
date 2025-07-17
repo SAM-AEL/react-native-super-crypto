@@ -152,43 +152,43 @@ jobs:
   #       run: |
   #         yarn turbo run build:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}"
 
-  publish-npm:
-    needs: [lint, test, build-library]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # publish-npm:
+  #   needs: [lint, test, build-library]
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
 
-      - name: Setup
-        uses: ./.github/actions/setup
+  #     - name: Setup
+  #       uses: ./.github/actions/setup
 
-      - name: Build package
-        run: yarn prepare
+  #     - name: Build package
+  #       run: yarn prepare
 
-      - name: Write .npmrc for npm publish
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  #     - name: Write .npmrc for npm publish
+  #       run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+  #       env:
+  #         NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Debug: Show Yarn and npm versions
-      - name: Show Yarn and npm versions
-        run: |
-          yarn --version
-          npm --version
+  #     # Debug: Show Yarn and npm versions
+  #     - name: Show Yarn and npm versions
+  #       run: |
+  #         yarn --version
+  #         npm --version
 
-      # Debug: Show npm registry and whoami
-      - name: Show npm registry and whoami
-        run: |
-          npm config get registry
-          npm whoami || echo "npm whoami failed"
+  #     # Debug: Show npm registry and whoami
+  #     - name: Show npm registry and whoami
+  #       run: |
+  #         npm config get registry
+  #         npm whoami || echo "npm whoami failed"
 
-      # Debug: Show .npmrc contents
-      - name: Show .npmrc contents
-        run: cat .npmrc
+  #     # Debug: Show .npmrc contents
+  #     - name: Show .npmrc contents
+  #       run: cat .npmrc
 
-      - name: Publish to npm
-        run: yarn npm publish --access public
+  #     - name: Publish to npm
+  #       run: yarn npm publish --access public
 
-      - name: Remove .npmrc
-        run: rm -f .npmrc
+  #     - name: Remove .npmrc
+  #       run: rm -f .npmrc
