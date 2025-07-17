@@ -1,3 +1,1 @@
-throw new Error(
-  'Super Crypto only works with React Native.'
-);
+throw new Error('Super Crypto only works with React Native.');
