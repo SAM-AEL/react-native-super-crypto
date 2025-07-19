@@ -719,6 +719,9 @@ export default function App() {
             placeholderTextColor="#666"
             autoCapitalize="none"
           />
+          <Text style={{ color: '#aaa', marginBottom: 4 }}>
+            N (must be a power of 2, minimum 16384)
+          </Text>
           <View style={{ flexDirection: 'row', marginBottom: 8 }}>
             <Button
               title="Generate Salt"
@@ -741,7 +744,7 @@ export default function App() {
                     await SuperCrypto.scrypt(
                       scryptPassword,
                       scryptSalt,
-                      65536,
+                      16384,
                       8,
                       1,
                       32

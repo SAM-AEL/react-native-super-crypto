@@ -241,7 +241,7 @@ async function handleScrypt() {
     const derivedKey = await SuperCrypto.scrypt(
       password,
       salt,
-      16384, // N (CPU/memory cost parameter, power of 2)
+      16384, // N (CPU/memory cost parameter, power of 2, minimum 16384)
       8,     // r (block size parameter)
       1,     // p (parallelization parameter)
       32     // keyLen (32 bytes for 256-bit key)
@@ -406,7 +406,7 @@ Derives a cryptographic key from a password using Scrypt.
 
 *   `password`: The password to derive the key from.
 *   `salt`: The salt (base64 encoded string).
-*   `n`: CPU/memory cost parameter (must be a power of 2, e.g., 2^14 = 16384). Higher values increase security.
+*   `n`: CPU/memory cost parameter (**must be a power of 2, minimum 16384**; enforced on both iOS and Android).
 *   `r`: Block size parameter.
 *   `p`: Parallelization parameter.
 *   `keyLen`: The desired length of the derived key in bytes.
@@ -445,7 +445,7 @@ Using cryptographic functions correctly is paramount for security. Misuse can le
 *   **Password Hashing**:
     *   Always use strong, adaptive key derivation functions like **PBKDF2 or Scrypt** for hashing passwords. Never use simple hash functions (like SHA-256 directly) for passwords, as they are vulnerable to rainbow table and brute-force attacks.
     *   Always use a **unique, cryptographically secure salt** for each password.
-    *   Choose sufficiently high iteration counts (for PBKDF2) or cost parameters (for Scrypt) to make brute-force attacks computationally infeasible. These parameters should be tuned based on current hardware capabilities and security recommendations.
+    *   Choose sufficiently high iteration counts (for PBKDF2) or cost parameters (for Scrypt) to make brute-force attacks computationally infeasible. **For Scrypt, N must be a power of 2 and at least 16384 (enforced on both iOS and Android).** These parameters should be tuned based on current hardware capabilities and security recommendations.
 *   **Data Integrity**: HMAC functions provide message authentication, ensuring that data has not been tampered with. Use them when you need to verify the integrity and authenticity of a message.
 *   **Input Validation**: Always validate and sanitize inputs to cryptographic functions to prevent unexpected behavior or potential attacks.
 

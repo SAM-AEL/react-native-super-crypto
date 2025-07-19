@@ -509,8 +509,8 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
                 promise.reject("INVALID_INPUT", "Salt must be valid Base64")
                 return
             }
-            if (n < 65536 || n > 1048576 || n.toInt() and (n.toInt() - 1) != 0) {
-                promise.reject("INVALID_INPUT", "scrypt n must be a power of 2 between 65536 and 1048576")
+            if (n < 16384 || n > 1048576 || n.toInt() and (n.toInt() - 1) != 0) {
+                promise.reject("INVALID_INPUT", "scrypt n must be a power of 2 between 16384 and 1048576")
                 return
             }
             if (r < 8 || r > 32) {

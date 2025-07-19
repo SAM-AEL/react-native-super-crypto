@@ -421,6 +421,10 @@
     }
     NSUInteger keyLenValue = [keyLen unsignedIntegerValue];
     NSMutableData *keyData = [NSMutableData dataWithLength:keyLenValue];
+    if ([N unsignedLongLongValue] < 16384 || ([N unsignedLongLongValue] & ([N unsignedLongLongValue] - 1)) != 0) {
+        reject(@"INVALID_INPUT", @"scrypt N must be a power of 2 and at least 16384", nil);
+        return;
+    }
     int result = libscrypt_scrypt(
         passwordData.bytes, passwordData.length,
         saltData.bytes, saltData.length,
