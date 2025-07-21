@@ -1,7 +1,7 @@
 <div align="center">
 <br/>
 <p>
-<img src="[https://i.ibb.co/zTbYxsX9/image.jpg](https://i.ibb.co/JWm2mntv/544ca322-a760-4745-a2f4-24df32321f33-removalai-preview.png)" width="200" alt="Super Crypto" />
+<img src="https://i.ibb.co/JWm2mntv/544ca322-a760-4745-a2f4-24df32321f33-removalai-preview.png" width="200" alt="Super Crypto" />
 </p>
 <br/>
 <p>
