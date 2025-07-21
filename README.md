@@ -177,7 +177,7 @@ async function handleShaHash() {
     const sha512Hash = await SuperCrypto.sha512(data);
     console.log('SHA512 Hash:', sha512Hash);
 
-    // <font color="orange" size="2"><strong>⚠️ Deprecation Warning:</strong> SHA-1 is available but deprecated for security-sensitive applications. Use with caution.</font>
+    ⚠️ Deprecation Warning: SHA-1 is available but deprecated for security-sensitive applications. Use with caution.
     const sha1Hash = await SuperCrypto.sha1(data);
     console.warn('SHA1 Hash (DEPRECATED):', sha1Hash);
   } catch (error) {
