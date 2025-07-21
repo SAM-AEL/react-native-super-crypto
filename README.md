@@ -1,7 +1,7 @@
 <div align="center">
 <br/>
 <p>
-<img src="https://raw.githubusercontent.com/SAM-AEL/react-native-super-crypto/main/assets/logo.png" width="200" alt="Super Crypto" />
+<img src="https://i.ibb.co/zTbYxsX9/image.jpg" width="200" alt="Super Crypto" />
 </p>
 <br/>
 <p>
