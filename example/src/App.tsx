@@ -424,7 +424,7 @@ export default function App() {
                   const encrypted = await SuperCrypto.aesEncrypt(
                     aesInput,
                     aesKey,
-                    aesIv || null,
+                    aesMode === 'GCM' ? aesIv : null,
                     aesMode
                   );
                   setAesEncrypted(encrypted);
@@ -432,7 +432,7 @@ export default function App() {
                 } catch (e: any) {
                   setAesResult((r) => ({
                     ...r,
-                    error: e?.message || JSON.stringify(e),
+                    error: e instanceof Error ? e.message : JSON.stringify(e),
                   }));
                 }
                 setLoading(null);
@@ -454,7 +454,7 @@ export default function App() {
                   const decrypted = await SuperCrypto.aesDecrypt(
                     aesEncrypted,
                     aesKey,
-                    aesIv || null,
+                    aesMode === 'GCM' ? aesIv : null,
                     aesMode
                   );
                   setAesResult((r) => ({ ...r, decrypted, error: undefined }));

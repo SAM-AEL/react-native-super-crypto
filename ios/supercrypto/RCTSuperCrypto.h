@@ -53,7 +53,7 @@ NS_ASSUME_NONNULL_BEGIN
                   resolver:(RCTPromiseResolveBlock)resolve 
                    rejecter:(RCTPromiseRejectBlock)reject;
 
-- (void)generateSalt:(double)length 
+- (void)generateSalt:(NSInteger)length 
            resolver:(RCTPromiseResolveBlock)resolve 
             rejecter:(RCTPromiseRejectBlock)reject;
 

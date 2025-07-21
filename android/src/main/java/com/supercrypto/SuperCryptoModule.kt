@@ -20,6 +20,36 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
 import java.security.NoSuchAlgorithmException
 import java.security.InvalidKeyException
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+// Error code and message constants
+private object Errors {
+    const val INVALID_INPUT = "INVALID_INPUT"
+    const val INVALID_INPUT_MSG = "Input data cannot be empty"
+    const val INVALID_BASE64_MSG = "Input must be valid Base64"
+    const val INVALID_HEX_MSG = "Input must be a valid hex string"
+    const val UNSUPPORTED_ALGO = "UNSUPPORTED_ALGORITHM"
+    const val UNSUPPORTED_ALGO_MSG = "Unsupported hash algorithm"
+    const val DEPRECATED = "DEPRECATED_FUNCTION"
+    const val DEPRECATED_MSG = "SHA1 is deprecated and should not be used for security purposes. Please use SHA256 or SHA512 instead."
+    const val AES_ENCRYPT = "AES_ENCRYPT_ERROR"
+    const val AES_DECRYPT = "AES_DECRYPT_ERROR"
+    const val PBKDF2 = "PBKDF2_ERROR"
+    const val SCRYPT = "SCRYPT_ERROR"
+    const val RANDOM_BYTES = "RANDOM_BYTES_ERROR"
+    const val SALT_GEN = "SALT_GENERATION_ERROR"
+    const val BASE64_ENCODE = "BASE64_ENCODE_ERROR"
+    const val BASE64_DECODE = "BASE64_DECODE_ERROR"
+    const val HEX_ENCODE = "HEX_ENCODE_ERROR"
+    const val HEX_DECODE = "HEX_DECODE_ERROR"
+    const val UTF8_ENCODE = "UTF8_ENCODE_ERROR"
+    const val UTF8_ENCODE_MSG = "Failed to encode string as UTF-8"
+    const val UTF8_DECODE = "UTF8_DECODE_ERROR"
+    const val UTF8_DECODE_MSG = "Failed to decode data as UTF-8"
+}
 
 class SuperCryptoModule(reactContext: ReactApplicationContext) :
     NativeSuperCryptoSpec(reactContext) {
@@ -47,7 +77,20 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
      * Validates if the input string is valid hexadecimal.
      */
     private fun isValidHex(input: String): Boolean {
-        return input.matches(Regex("^[0-9a-fA-F]+$"))
+        if (input.isEmpty()) return false
+        return input.all { it in "0123456789abcdefABCDEF" }
+    }
+
+    // Helper to run crypto on background thread and return to main thread
+    private fun runCrypto(block: () -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                block()
+            } catch (e: Exception) {
+                // This should not be reached; all methods should handle their own errors
+                Log.e("SuperCrypto", "Unexpected error in crypto operation", e)
+            }
+        }
     }
 
     @ReactMethod
@@ -59,48 +102,48 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
         algorithm: String,
         promise: Promise
     ) {
-        try {
-            if (password.isEmpty() || salt.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Password and salt cannot be empty")
-                return
-            }
-            if (!isValidBase64(salt)) {
-                promise.reject("INVALID_INPUT", "Salt must be valid Base64")
-                return
-            }
-            if (iterations < 1) {
-                promise.reject("INVALID_INPUT", "Iterations must be a positive number")
-                return
-            }
-            if (keyLen < 1 || keyLen > 512) {
-                promise.reject("INVALID_INPUT", "Key length must be between 1 and 512 bytes")
-                return
-            }
-
-            val hashAlgorithm =
-                when (algorithm.uppercase()) {
-                    "SHA256" -> "PBKDF2WithHmacSHA256"
-                    "SHA512" -> "PBKDF2WithHmacSHA512"
-                    else -> {
-                        promise.reject("UNSUPPORTED_ALGORITHM", "Unsupported hash algorithm")
-                        return
-                    }
+        runCrypto {
+            try {
+                if (password.isEmpty() || salt.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Password and salt cannot be empty")
+                    return@runCrypto
                 }
-
-            val spec =
-                PBEKeySpec(
-                    password.toCharArray(),
-                    Base64.decode(salt, Base64.NO_WRAP),
-                    iterations.toInt(),
-                    keyLen.toInt() * 8
-                )
-            val factory = SecretKeyFactory.getInstance(hashAlgorithm)
-            val hash = factory.generateSecret(spec).encoded
-            promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("ALGORITHM_ERROR", "Unsupported algorithm: $algorithm")
-        } catch (e: Exception) {
-            promise.reject("PBKDF2_ERROR", "An error occurred during PBKDF2 execution: ${e.message}")
+                if (!isValidBase64(salt)) {
+                    promise.reject("INVALID_INPUT", "Salt must be valid Base64")
+                    return@runCrypto
+                }
+                if (iterations < 1) {
+                    promise.reject("INVALID_INPUT", "Iterations must be a positive number")
+                    return@runCrypto
+                }
+                if (keyLen < 1 || keyLen > 512) {
+                    promise.reject("INVALID_INPUT", "Key length must be between 1 and 512 bytes")
+                    return@runCrypto
+                }
+                val hashAlgorithm =
+                    when (algorithm.uppercase()) {
+                        "SHA256" -> "PBKDF2WithHmacSHA256"
+                        "SHA512" -> "PBKDF2WithHmacSHA512"
+                        else -> {
+                            promise.reject("UNSUPPORTED_ALGORITHM", "Unsupported hash algorithm")
+                            return@runCrypto
+                        }
+                    }
+                val spec =
+                    PBEKeySpec(
+                        password.toCharArray(),
+                        Base64.decode(salt, Base64.NO_WRAP),
+                        iterations.toInt(),
+                        keyLen.toInt() * 8
+                    )
+                val factory = SecretKeyFactory.getInstance(hashAlgorithm)
+                val hash = factory.generateSecret(spec).encoded
+                promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject("ALGORITHM_ERROR", "Unsupported algorithm: $algorithm")
+            } catch (e: Exception) {
+                promise.reject("PBKDF2_ERROR", "An error occurred during PBKDF2 execution: ${e.message}")
+            }
         }
     }
 
@@ -118,144 +161,166 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     override fun sha256(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Input data cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Input data cannot be empty")
+                    return@runCrypto
+                }
+                promise.resolve(sha256(data))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject("SHA256_ERROR", "SHA-256 algorithm not available")
+            } catch (e: Exception) {
+                promise.reject("SHA256_ERROR", "An error occurred during SHA256 hashing: ${e.message}")
             }
-            promise.resolve(sha256(data))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("SHA256_ERROR", "SHA-256 algorithm not available")
-        } catch (e: Exception) {
-            promise.reject("SHA256_ERROR", "An error occurred during SHA256 hashing: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun sha512(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Input data cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Input data cannot be empty")
+                    return@runCrypto
+                }
+                promise.resolve(sha512(data))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject("SHA512_ERROR", "SHA-512 algorithm not available")
+            } catch (e: Exception) {
+                promise.reject("SHA512_ERROR", "An error occurred during SHA512 hashing: ${e.message}")
             }
-            promise.resolve(sha512(data))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("SHA512_ERROR", "SHA-512 algorithm not available")
-        } catch (e: Exception) {
-            promise.reject("SHA512_ERROR", "An error occurred during SHA512 hashing: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun sha1(data: String, promise: Promise) {
+        Log.w("SuperCrypto", "SHA1 is deprecated and insecure. Use SHA256 or SHA512 instead.")
         promise.reject(
             "DEPRECATED_FUNCTION",
-            "SHA1 is deprecated and should not be used for security purposes"
+            "SHA1 is deprecated and should not be used for security purposes. Please use SHA256 or SHA512 instead."
         )
     }
 
     @ReactMethod
     override fun hmacSha256(data: String, key: String, promise: Promise) {
-        try {
-            if (data.isEmpty() || key.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Data and key cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty() || key.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Data and key cannot be empty")
+                    return@runCrypto
+                }
+                val mac = Mac.getInstance("HmacSHA256")
+                val secretKeySpec =
+                    SecretKeySpec(key.toByteArray(StandardCharsets.UTF_8), "HmacSHA256")
+                mac.init(secretKeySpec)
+                val hash = mac.doFinal(data.toByteArray(StandardCharsets.UTF_8))
+                promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject("HMAC_SHA256_ERROR", "HMAC-SHA256 algorithm not available")
+            } catch (e: Exception) {
+                promise.reject("HMAC_SHA256_ERROR", "An error occurred during HMAC-SHA256 execution: ${e.message}")
             }
-            val mac = Mac.getInstance("HmacSHA256")
-            val secretKeySpec =
-                SecretKeySpec(key.toByteArray(StandardCharsets.UTF_8), "HmacSHA256")
-            mac.init(secretKeySpec)
-            val hash = mac.doFinal(data.toByteArray(StandardCharsets.UTF_8))
-            promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("HMAC_SHA256_ERROR", "HMAC-SHA256 algorithm not available")
-        } catch (e: Exception) {
-            promise.reject("HMAC_SHA256_ERROR", "An error occurred during HMAC-SHA256 execution: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun hmacSha512(data: String, key: String, promise: Promise) {
-        try {
-            if (data.isEmpty() || key.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Data and key cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty() || key.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Data and key cannot be empty")
+                    return@runCrypto
+                }
+                val mac = Mac.getInstance("HmacSHA512")
+                val secretKeySpec =
+                    SecretKeySpec(key.toByteArray(StandardCharsets.UTF_8), "HmacSHA512")
+                mac.init(secretKeySpec)
+                val hash = mac.doFinal(data.toByteArray(StandardCharsets.UTF_8))
+                promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject("HMAC_SHA512_ERROR", "HMAC-SHA512 algorithm not available")
+            } catch (e: Exception) {
+                promise.reject("HMAC_SHA512_ERROR", "An error occurred during HMAC-SHA512 execution: ${e.message}")
             }
-            val mac = Mac.getInstance("HmacSHA512")
-            val secretKeySpec =
-                SecretKeySpec(key.toByteArray(StandardCharsets.UTF_8), "HmacSHA512")
-            mac.init(secretKeySpec)
-            val hash = mac.doFinal(data.toByteArray(StandardCharsets.UTF_8))
-            promise.resolve(Base64.encodeToString(hash, Base64.NO_WRAP))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("HMAC_SHA512_ERROR", "HMAC-SHA512 algorithm not available")
-        } catch (e: Exception) {
-            promise.reject("HMAC_SHA512_ERROR", "An error occurred during HMAC-SHA512 execution: ${e.message}")
+        }
+    }
+
+    // AES helpers
+    private fun validateAESKey(key: String, promise: Promise): ByteArray? {
+        if (!isValidBase64(key)) {
+            promise.reject(Errors.INVALID_INPUT, "Key must be valid Base64")
+            return null
+        }
+        val keyBytes = Base64.decode(key, Base64.NO_WRAP)
+        if (keyBytes.size !in listOf(16, 24, 32)) {
+            promise.reject(Errors.INVALID_INPUT, "Key must be 16, 24, or 32 bytes for AES")
+            return null
+        }
+        return keyBytes
+    }
+    private fun ivBytesForMode(mode: String, iv: String?, isEncrypt: Boolean, promise: Promise): ByteArray? {
+        val ivLength = if (mode.uppercase() == "GCM") 12 else 16
+        return if (iv.isNullOrEmpty()) {
+            if (isEncrypt) {
+                val random = SecureRandom()
+                ByteArray(ivLength).apply { random.nextBytes(this) }
+            } else {
+                null // For decrypt, IV must be extracted from ciphertext
+            }
+        } else {
+            if (!isValidBase64(iv)) {
+                promise.reject(Errors.INVALID_INPUT, "IV must be valid Base64")
+                return null
+            }
+            val ivBytes = Base64.decode(iv, Base64.NO_WRAP)
+            if (ivBytes.size != ivLength) {
+                promise.reject(Errors.INVALID_INPUT, "IV must be $ivLength bytes for AES-${mode.uppercase()}")
+                return null
+            }
+            ivBytes
         }
     }
 
     @ReactMethod
     override fun aesEncrypt(data: String, key: String, iv: String?, mode: String, promise: Promise) {
-        try {
-            if (data.isEmpty() || key.isEmpty() || mode.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Data, key, and mode cannot be empty")
-                return
-            }
-            if (!isValidBase64(key)) {
-                promise.reject("INVALID_INPUT", "Key must be valid Base64")
-                return
-            }
-            val keyBytes = Base64.decode(key, Base64.NO_WRAP)
-            if (keyBytes.size !in listOf(16, 24, 32)) {
-                promise.reject("INVALID_KEY", "Key must be 16, 24, or 32 bytes for AES")
-                return
-            }
-            val modeUpper = mode.uppercase()
-            val cipher: Cipher
-            val ivBytes: ByteArray
-            when (modeUpper) {
-                "GCM" -> {
-                    cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                    if (iv.isNullOrEmpty()) {
+        runCrypto {
+            try {
+                if (data.isEmpty() || key.isEmpty() || mode.isEmpty()) {
+                    promise.reject(Errors.INVALID_INPUT, "Data, key, and mode cannot be empty")
+                    return@runCrypto
+                }
+                val keyBytes = validateAESKey(key, promise) ?: return@runCrypto
+                val modeUpper = mode.uppercase()
+                if (modeUpper == "GCM") {
+                    // Always generate or use provided IV, prepend to ciphertext+tag, and return combined format
+                    val ivBytes = if (iv.isNullOrEmpty()) {
                         val random = SecureRandom()
-                        ivBytes = ByteArray(12)
-                        random.nextBytes(ivBytes)
+                        ByteArray(12).apply { random.nextBytes(this) }
                     } else {
                         if (!isValidBase64(iv)) {
-                            promise.reject("INVALID_INPUT", "IV must be valid Base64")
-                            return
+                            promise.reject(Errors.INVALID_INPUT, "IV must be valid Base64")
+                            return@runCrypto
                         }
-                        ivBytes = Base64.decode(iv, Base64.NO_WRAP)
-                        if (ivBytes.size != 12) {
-                            promise.reject("INVALID_IV", "IV must be 12 bytes for AES-GCM")
-                            return
+                        val decoded = Base64.decode(iv, Base64.NO_WRAP)
+                        if (decoded.size != 12) {
+                            promise.reject(Errors.INVALID_INPUT, "IV must be 12 bytes for AES-GCM")
+                            return@runCrypto
                         }
+                        decoded
                     }
+                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                     val keySpec = SecretKeySpec(keyBytes, "AES")
                     val ivSpec = GCMParameterSpec(128, ivBytes)
                     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
                     val dataBytes = data.toByteArray(StandardCharsets.UTF_8)
                     val encryptedBytes = cipher.doFinal(dataBytes)
+                    // Return combined format: IV|ciphertext|tag
                     val combined = ivBytes + encryptedBytes
                     promise.resolve(Base64.encodeToString(combined, Base64.NO_WRAP))
-                }
-                "CBC" -> {
-                    cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
-                    if (iv.isNullOrEmpty()) {
-                        val random = SecureRandom()
-                        ivBytes = ByteArray(16)
-                        random.nextBytes(ivBytes)
-                    } else {
-                        if (!isValidBase64(iv)) {
-                            promise.reject("INVALID_INPUT", "IV must be valid Base64")
-                            return
-                        }
-                        ivBytes = Base64.decode(iv, Base64.NO_WRAP)
-                        if (ivBytes.size != 16) {
-                            promise.reject("INVALID_IV", "IV must be 16 bytes for AES-CBC")
-                            return
-                        }
-                    }
+                } else if (modeUpper == "CBC") {
+                    val ivBytes = ivBytesForMode(modeUpper, iv, true, promise) ?: return@runCrypto
+                    val cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
                     val keySpec = SecretKeySpec(keyBytes, "AES")
                     val ivSpec = IvParameterSpec(ivBytes)
                     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
@@ -263,230 +328,220 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
                     val encryptedBytes = cipher.doFinal(dataBytes)
                     val combined = ivBytes + encryptedBytes
                     promise.resolve(Base64.encodeToString(combined, Base64.NO_WRAP))
+                } else {
+                    promise.reject(Errors.UNSUPPORTED_ALGO, Errors.UNSUPPORTED_ALGO_MSG)
+                    return@runCrypto
                 }
-                else -> {
-                    promise.reject("UNSUPPORTED_MODE", "Only GCM and CBC modes are supported")
-                    return
-                }
+            } catch (e: Exception) {
+                promise.reject(Errors.AES_ENCRYPT, "An error occurred during AES encryption: ${e.message}")
             }
-        } catch (e: Exception) {
-            promise.reject("AES_ENCRYPT_ERROR", "An error occurred during AES encryption: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun aesDecrypt(encryptedData: String, key: String, iv: String?, mode: String, promise: Promise) {
-        try {
-            if (encryptedData.isEmpty() || key.isEmpty() || mode.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Encrypted data, key, and mode cannot be empty")
-                return
-            }
-            if (!isValidBase64(key) || !isValidBase64(encryptedData)) {
-                promise.reject("INVALID_INPUT", "Key and encrypted data must be valid Base64")
-                return
-            }
-            val keyBytes = Base64.decode(key, Base64.NO_WRAP)
-            if (keyBytes.size !in listOf(16, 24, 32)) {
-                promise.reject("INVALID_KEY", "Key must be 16, 24, or 32 bytes for AES")
-                return
-            }
-            val modeUpper = mode.uppercase()
-            val cipher: Cipher
-            val ivBytes: ByteArray
-            val encryptedDataBytes: ByteArray
-            when (modeUpper) {
-                "GCM" -> {
-                    cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                    if (iv.isNullOrEmpty()) {
-                        val combined = Base64.decode(encryptedData, Base64.NO_WRAP)
-                        if (combined.size < 12) {
-                            promise.reject("INVALID_INPUT", "Encrypted data too short to contain IV")
-                            return
-                        }
-                        ivBytes = combined.copyOfRange(0, 12)
-                        encryptedDataBytes = combined.copyOfRange(12, combined.size)
-                    } else {
-                        if (!isValidBase64(iv)) {
-                            promise.reject("INVALID_INPUT", "IV must be valid Base64")
-                            return
-                        }
-                        ivBytes = Base64.decode(iv, Base64.NO_WRAP)
-                        if (ivBytes.size != 12) {
-                            promise.reject("INVALID_IV", "IV must be 12 bytes for AES-GCM")
-                            return
-                        }
-                        encryptedDataBytes = Base64.decode(encryptedData, Base64.NO_WRAP)
+        runCrypto {
+            try {
+                if (encryptedData.isEmpty() || key.isEmpty() || mode.isEmpty()) {
+                    promise.reject(Errors.INVALID_INPUT, "Encrypted data, key, and mode cannot be empty")
+                    return@runCrypto
+                }
+                if (!isValidBase64(key) || !isValidBase64(encryptedData)) {
+                    promise.reject(Errors.INVALID_INPUT, "Key and encrypted data must be valid Base64")
+                    return@runCrypto
+                }
+                val keyBytes = validateAESKey(key, promise) ?: return@runCrypto
+                val modeUpper = mode.uppercase()
+                if (modeUpper == "GCM") {
+                    // Always expect combined format: IV|ciphertext|tag
+                    val combined = Base64.decode(encryptedData, Base64.NO_WRAP)
+                    if (combined.size < 12) {
+                        promise.reject(Errors.INVALID_INPUT, "Encrypted data too short to contain IV")
+                        return@runCrypto
                     }
+                    val ivBytes = combined.copyOfRange(0, 12)
+                    val encryptedDataBytes = combined.copyOfRange(12, combined.size)
+                    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                     val keySpec = SecretKeySpec(keyBytes, "AES")
                     val ivSpec = GCMParameterSpec(128, ivBytes)
                     cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
                     val decryptedBytes = cipher.doFinal(encryptedDataBytes)
                     val decryptedString = String(decryptedBytes, StandardCharsets.UTF_8)
-                    promise.resolve(decryptedString)
-                }
-                "CBC" -> {
-                    cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
-                    if (iv.isNullOrEmpty()) {
-                        val combined = Base64.decode(encryptedData, Base64.NO_WRAP)
-                        if (combined.size < 16) {
-                            promise.reject("INVALID_INPUT", "Encrypted data too short to contain IV")
-                            return
-                        }
-                        ivBytes = combined.copyOfRange(0, 16)
-                        encryptedDataBytes = combined.copyOfRange(16, combined.size)
-                    } else {
-                        if (!isValidBase64(iv)) {
-                            promise.reject("INVALID_INPUT", "IV must be valid Base64")
-                            return
-                        }
-                        ivBytes = Base64.decode(iv, Base64.NO_WRAP)
-                        if (ivBytes.size != 16) {
-                            promise.reject("INVALID_IV", "IV must be 16 bytes for AES-CBC")
-                            return
-                        }
-                        encryptedDataBytes = Base64.decode(encryptedData, Base64.NO_WRAP)
+                    if (decryptedString == null) {
+                        promise.reject(Errors.UTF8_DECODE, Errors.UTF8_DECODE_MSG)
+                        return@runCrypto
                     }
+                    promise.resolve(decryptedString)
+                } else if (modeUpper == "CBC") {
+                    // Always expect combined format: IV|ciphertext
+                    if (!iv.isNullOrEmpty()) {
+                        promise.reject(Errors.INVALID_INPUT, "For CBC mode, the IV must not be provided separately. The encrypted data must be in the combined format (IV|ciphertext).")
+                        return@runCrypto
+                    }
+                    val combined = Base64.decode(encryptedData, Base64.NO_WRAP)
+                    if (combined.size < 16) {
+                        promise.reject(Errors.INVALID_INPUT, "Encrypted data too short to contain IV")
+                        return@runCrypto
+                    }
+                    val ivBytes = combined.copyOfRange(0, 16)
+                    val encryptedDataBytes = combined.copyOfRange(16, combined.size)
+                    val cipher = Cipher.getInstance("AES/CBC/PKCS7Padding")
                     val keySpec = SecretKeySpec(keyBytes, "AES")
                     val ivSpec = IvParameterSpec(ivBytes)
                     cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
                     val decryptedBytes = cipher.doFinal(encryptedDataBytes)
                     val decryptedString = String(decryptedBytes, StandardCharsets.UTF_8)
+                    if (decryptedString == null) {
+                        promise.reject(Errors.UTF8_DECODE, Errors.UTF8_DECODE_MSG)
+                        return@runCrypto
+                    }
                     promise.resolve(decryptedString)
+                } else {
+                    promise.reject(Errors.UNSUPPORTED_ALGO, Errors.UNSUPPORTED_ALGO_MSG)
+                    return@runCrypto
                 }
-                else -> {
-                    promise.reject("UNSUPPORTED_MODE", "Only GCM and CBC modes are supported")
-                    return
-                }
+            } catch (e: Exception) {
+                promise.reject(Errors.AES_DECRYPT, "An error occurred during AES decryption: ${e.message}")
             }
-        } catch (e: Exception) {
-            promise.reject("AES_DECRYPT_ERROR", "An error occurred during AES decryption: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun generateRandomBytes(length: Double, promise: Promise) {
-        if (length % 1 != 0.0 || length <= 0) {
-            promise.reject("INVALID_INPUT", "Length must be a positive integer")
-                return
+        runCrypto {
+            if (length % 1 != 0.0 || length <= 0) {
+                promise.reject("INVALID_INPUT", "Length must be a positive integer")
+                return@runCrypto
             }
-        val intLength = length.toInt()
-        if (intLength > 1_000_000) {
+            val intLength = length.toInt()
+            if (intLength > 1_000_000) {
                 promise.reject("INVALID_INPUT", "Requested length exceeds maximum allowed (1MB)")
-                return
+                return@runCrypto
             }
-        try {
-            val random = SecureRandom()
-            val bytes = ByteArray(intLength)
-            random.nextBytes(bytes)
-            promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
-        } catch (e: Exception) {
-            promise.reject("RANDOM_BYTES_ERROR", "An error occurred while generating random bytes: ${e.message}")
+            try {
+                val random = SecureRandom()
+                val bytes = ByteArray(intLength)
+                random.nextBytes(bytes)
+                promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
+            } catch (e: Exception) {
+                promise.reject("RANDOM_BYTES_ERROR", "An error occurred while generating random bytes: ${e.message}")
+            }
         }
     }
 
-    
+
 
     @ReactMethod
     override fun base64Encode(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Input data cannot be empty")
-                return
-            }
-            promise.resolve(
-                Base64.encodeToString(
-                    data.toByteArray(StandardCharsets.UTF_8),
-                    Base64.NO_WRAP
+        runCrypto {
+            try {
+                if (data.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Input data cannot be empty")
+                    return@runCrypto
+                }
+                promise.resolve(
+                    Base64.encodeToString(
+                        data.toByteArray(StandardCharsets.UTF_8),
+                        Base64.NO_WRAP
+                    )
                 )
-            )
-        } catch (e: Exception) {
-            promise.reject("BASE64_ENCODE_ERROR", "An error occurred during Base64 encoding: ${e.message}")
+            } catch (e: Exception) {
+                promise.reject("BASE64_ENCODE_ERROR", "An error occurred during Base64 encoding: ${e.message}")
+            }
         }
     }
 
     @ReactMethod
     override fun base64Decode(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Input data cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Input data cannot be empty")
+                    return@runCrypto
+                }
+                if (!isValidBase64(data)) {
+                    promise.reject("INVALID_INPUT", "Input must be valid Base64")
+                    return@runCrypto
+                }
+                val decoded = Base64.decode(data, Base64.NO_WRAP)
+                promise.resolve(String(decoded, StandardCharsets.UTF_8))
+            } catch (e: IllegalArgumentException) {
+                promise.reject("BASE64_DECODE_ERROR", "Invalid Base64 input")
+            } catch (e: Exception) {
+                promise.reject("BASE64_DECODE_ERROR", "An error occurred during Base64 decoding: ${e.message}")
             }
-            if (!isValidBase64(data)) {
-                promise.reject("INVALID_INPUT", "Input must be valid Base64")
-                return
-            }
-            val decoded = Base64.decode(data, Base64.NO_WRAP)
-            promise.resolve(String(decoded, StandardCharsets.UTF_8))
-        } catch (e: IllegalArgumentException) {
-            promise.reject("BASE64_DECODE_ERROR", "Invalid Base64 input")
-        } catch (e: Exception) {
-            promise.reject("BASE64_DECODE_ERROR", "An error occurred during Base64 decoding: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun hexEncode(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Input data cannot be empty")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Input data cannot be empty")
+                    return@runCrypto
+                }
+                val bytes = data.toByteArray(StandardCharsets.UTF_8)
+                val hexChars = CharArray(bytes.size * 2)
+                for (i in bytes.indices) {
+                    val v = bytes[i].toInt() and 0xFF
+                    hexChars[i * 2] = "0123456789abcdef"[v ushr 4]
+                    hexChars[i * 2 + 1] = "0123456789abcdef"[v and 0x0F]
+                }
+                promise.resolve(String(hexChars))
+            } catch (e: Exception) {
+                promise.reject("HEX_ENCODE_ERROR", "An error occurred during hex encoding: ${e.message}")
             }
-            val bytes = data.toByteArray(StandardCharsets.UTF_8)
-            val hexChars = CharArray(bytes.size * 2)
-            for (i in bytes.indices) {
-                val v = bytes[i].toInt() and 0xFF
-                hexChars[i * 2] = "0123456789abcdef"[v ushr 4]
-                hexChars[i * 2 + 1] = "0123456789abcdef"[v and 0x0F]
-            }
-            promise.resolve(String(hexChars))
-        } catch (e: Exception) {
-            promise.reject("HEX_ENCODE_ERROR", "An error occurred during hex encoding: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun hexDecode(data: String, promise: Promise) {
-        try {
-            if (data.isEmpty() || data.length % 2 != 0) {
-                promise.reject("INVALID_INPUT", "Invalid hex string")
-                return
+        runCrypto {
+            try {
+                if (data.isEmpty() || data.length % 2 != 0) {
+                    promise.reject("INVALID_INPUT", "Invalid hex string")
+                    return@runCrypto
+                }
+                if (!isValidHex(data)) {
+                    promise.reject("INVALID_INPUT", "Input must be a valid hex string")
+                    return@runCrypto
+                }
+                val len = data.length
+                val bytes = ByteArray(len / 2)
+                for (i in 0 until len step 2) {
+                    bytes[i / 2] =
+                        ((Character.digit(data[i], 16) shl 4) +
+                                Character.digit(data[i + 1], 16))
+                            .toByte()
+                }
+                promise.resolve(String(bytes, StandardCharsets.UTF_8))
+            } catch (e: Exception) {
+                promise.reject("HEX_DECODE_ERROR", "An error occurred during hex decoding: ${e.message}")
             }
-            if (!isValidHex(data)) {
-                promise.reject("INVALID_INPUT", "Input must be a valid hex string")
-                return
-            }
-            val len = data.length
-            val bytes = ByteArray(len / 2)
-            for (i in 0 until len step 2) {
-                bytes[i / 2] =
-                    ((Character.digit(data[i], 16) shl 4) +
-                            Character.digit(data[i + 1], 16))
-                        .toByte()
-            }
-            promise.resolve(String(bytes, StandardCharsets.UTF_8))
-        } catch (e: Exception) {
-            promise.reject("HEX_DECODE_ERROR", "An error occurred during hex decoding: ${e.message}")
         }
     }
 
     @ReactMethod
     override fun generateSalt(length: Double, promise: Promise) {
-        if (length % 1 != 0.0 || length <= 0) {
-            promise.reject("INVALID_INPUT", "Length must be a positive integer")
-                return
+        runCrypto {
+            if (length % 1 != 0.0 || length <= 0) {
+                promise.reject("INVALID_INPUT", "Length must be a positive integer")
+                return@runCrypto
             }
-        val intLength = length.toInt()
-        if (intLength > 1_000_000) {
+            val intLength = length.toInt()
+            if (intLength > 1_000_000) {
                 promise.reject("INVALID_INPUT", "Requested length exceeds maximum allowed (1MB)")
-                return
+                return@runCrypto
             }
-        try {
-            val random = SecureRandom()
-            val bytes = ByteArray(intLength)
-            random.nextBytes(bytes)
-            promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
-        } catch (e: Exception) {
-            promise.reject("SALT_GENERATION_ERROR", "An error occurred while generating salt: ${e.message}")
+            try {
+                val random = SecureRandom()
+                val bytes = ByteArray(intLength)
+                random.nextBytes(bytes)
+                promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
+            } catch (e: Exception) {
+                promise.reject("SALT_GENERATION_ERROR", "An error occurred while generating salt: ${e.message}")
+            }
         }
     }
 
@@ -500,78 +555,81 @@ class SuperCryptoModule(reactContext: ReactApplicationContext) :
         keyLen: Double,
         promise: Promise
     ) {
-        try {
-            if (password.isEmpty() || salt.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Password and salt cannot be empty")
-                return
-            }
-            if (!isValidBase64(salt)) {
-                promise.reject("INVALID_INPUT", "Salt must be valid Base64")
-                return
-            }
-            if (n < 16384 || n > 1048576 || n.toInt() and (n.toInt() - 1) != 0) {
-                promise.reject("INVALID_INPUT", "scrypt n must be a power of 2 between 16384 and 1048576")
-                return
-            }
-            if (r < 8 || r > 32) {
-                promise.reject("INVALID_INPUT", "scrypt r must be between 8 and 32")
-                return
-            }
-            if (p < 1) {
-                promise.reject("INVALID_INPUT", "scrypt p must be positive")
-                return
-            }
-            if (keyLen < 1) {
-                promise.reject("INVALID_INPUT", "Key length must be positive")
-                return
-            }
+        runCrypto {
+            try {
+                if (password.isEmpty() || salt.isEmpty()) {
+                    promise.reject("INVALID_INPUT", "Password and salt cannot be empty")
+                    return@runCrypto
+                }
+                if (!isValidBase64(salt)) {
+                    promise.reject("INVALID_INPUT", "Salt must be valid Base64")
+                    return@runCrypto
+                }
+                if (n < 16384 || n > 1048576 || n.toInt() and (n.toInt() - 1) != 0) {
+                    promise.reject("INVALID_INPUT", "scrypt n must be a power of 2 between 16384 and 1048576")
+                    return@runCrypto
+                }
+                if (r < 8 || r > 32) {
+                    promise.reject("INVALID_INPUT", "scrypt r must be between 8 and 32")
+                    return@runCrypto
+                }
+                if (p < 1) {
+                    promise.reject("INVALID_INPUT", "scrypt p must be positive")
+                    return@runCrypto
+                }
+                if (keyLen < 1) {
+                    promise.reject("INVALID_INPUT", "Key length must be positive")
+                    return@runCrypto
+                }
 
-            val passwordBytes = password.toByteArray(StandardCharsets.UTF_8)
-            val saltBytes = Base64.decode(salt, Base64.NO_WRAP)
-            val key =
-                org.bouncycastle.crypto.generators.SCrypt.generate(
-                    passwordBytes,
-                    saltBytes,
-                    n.toInt(),
-                    r.toInt(),
-                    p.toInt(),
-                    keyLen.toInt()
-                )
-            promise.resolve(Base64.encodeToString(key, Base64.NO_WRAP))
-        } catch (e: OutOfMemoryError) {
-            promise.reject("SCRYPT_ERROR", "scrypt parameters too large for device memory")
-        } catch (e: Exception) {
-            promise.reject("SCRYPT_ERROR", "An error occurred during scrypt execution: ${e.message}")
+                val passwordBytes = password.toByteArray(StandardCharsets.UTF_8)
+                val saltBytes = Base64.decode(salt, Base64.NO_WRAP)
+                val key =
+                    org.bouncycastle.crypto.generators.SCrypt.generate(
+                        passwordBytes,
+                        saltBytes,
+                        n.toInt(),
+                        r.toInt(),
+                        p.toInt(),
+                        keyLen.toInt()
+                    )
+                promise.resolve(Base64.encodeToString(key, Base64.NO_WRAP))
+            } catch (e: OutOfMemoryError) {
+                promise.reject("SCRYPT_ERROR", "scrypt parameters too large for device memory")
+            } catch (e: Exception) {
+                promise.reject("SCRYPT_ERROR", "An error occurred during scrypt execution: ${e.message}")
+            }
         }
     }
 
     @ReactMethod
     override fun verifyHash(data: String, hash: String, algorithm: String, promise: Promise) {
-        try {
-            if (data.isEmpty() || hash.isEmpty()) {
-                promise.reject("INVALID_INPUT", "Data and hash cannot be empty")
-                return
-            }
-            if (!isValidBase64(hash)) {
-                promise.reject("INVALID_INPUT", "Hash must be valid Base64")
-                return
-            }
-            val computedHash = when (algorithm.uppercase()) {
-                "SHA256" -> sha256(data)
-                "SHA512" -> sha512(data)
-                else -> {
-                    promise.reject("UNSUPPORTED_ALGORITHM", "Unsupported hash algorithm")
-                    return
+        runCrypto {
+            try {
+                if (data.isEmpty() || hash.isEmpty()) {
+                    promise.reject(Errors.INVALID_INPUT, "Data and hash cannot be empty")
+                    return@runCrypto
                 }
+                if (!isValidBase64(hash)) {
+                    promise.reject(Errors.INVALID_INPUT, "Hash must be valid Base64")
+                    return@runCrypto
+                }
+                val computedHash = when (algorithm.uppercase()) {
+                    "SHA256" -> sha256(data)
+                    "SHA512" -> sha512(data)
+                    else -> {
+                        promise.reject(Errors.UNSUPPORTED_ALGO, Errors.UNSUPPORTED_ALGO_MSG)
+                        return@runCrypto
+                    }
+                }
+                val computedHashBytes = Base64.decode(computedHash, Base64.NO_WRAP)
+                val hashBytes = Base64.decode(hash, Base64.NO_WRAP)
+                promise.resolve(MessageDigest.isEqual(computedHashBytes, hashBytes))
+            } catch (e: NoSuchAlgorithmException) {
+                promise.reject(Errors.UNSUPPORTED_ALGO, "Unsupported algorithm: $algorithm")
+            } catch (e: Exception) {
+                promise.reject("VERIFY_HASH_ERROR", "An error occurred during hash verification: ${e.message}")
             }
-            val computedHashBytes = Base64.decode(computedHash, Base64.NO_WRAP)
-            val hashBytes = Base64.decode(hash, Base64.NO_WRAP)
-
-            promise.resolve(MessageDigest.isEqual(computedHashBytes, hashBytes))
-        } catch (e: NoSuchAlgorithmException) {
-            promise.reject("VERIFY_HASH_ERROR", "Unsupported algorithm: $algorithm")
-        } catch (e: Exception) {
-            promise.reject("VERIFY_HASH_ERROR", "An error occurred during hash verification: ${e.message}")
         }
     }
 
